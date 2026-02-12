@@ -1,12 +1,35 @@
+# Python
 venv/
 __pycache__/
 *.py[cod]
 *$py.class
 .env
 .DS_Store
+
+# Server storage
 uploads/*
 !uploads/.gitkeep
 outputs/*
 !outputs/.gitkeep
+server/uploads/*
+!server/uploads/.gitkeep
+server/outputs/*
+!server/outputs/.gitkeep
+server/logs/*
+!server/logs/.gitkeep
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# IDE
+*.bak
 .idea/
 .vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

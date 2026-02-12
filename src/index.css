@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+    --color-primary: var(--color-blue-600);
+    --color-primary-foreground: var(--color-white);
+
+    --radius-lg: 0.75rem;
+    --radius-md: 0.5rem;
+    --radius-sm: 0.25rem;
+}
+
+@layer base {
+    body {
+        @apply bg-gray-950 text-gray-100;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+}
+
+@layer components {
+    .glass-panel {
+        @apply bg-gray-900/50 backdrop-blur-md border border-gray-800 rounded-lg;
+    }
+
+    .btn {
+        @apply inline-flex items-center justify-center px-4 py-2 rounded-md font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:pointer-events-none;
+    }
+
+    .btn-primary {
+        @apply bg-primary text-primary-foreground hover:bg-primary/90;
+    }
+
+    .btn-secondary {
+        @apply bg-gray-800 text-gray-100 hover:bg-gray-700;
+    }
+}
+
+/* Custom animations for the editor */
+@keyframes loading-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse-subtle {
+    animation: loading-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
