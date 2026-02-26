@@ -3,6 +3,7 @@ import time
 import uuid
 import shutil
 from datetime import datetime
+from urllib.parse import unquote
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -141,12 +142,18 @@ async def list_uploads():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取文件列表失败: {str(e)}")
 
+# Static files for downloads
+app.mount("/outputs", StaticFiles(directory=OUTPUT_FOLDER), name="outputs")
+# Also keep /download for ZIP files if they are in the root of OUTPUT_FOLDER
+# but actually StaticFiles handles those too.
+
 @app.get("/download/{filename:path}")
 async def download_file(filename: str):
-    filepath = os.path.join(OUTPUT_FOLDER, filename)
-    if not os.path.exists(filepath) or not os.path.isfile(filepath):
-        raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(filepath, filename=filename)
+    decoded_filename = unquote(filename)
+    filepath = os.path.join(OUTPUT_FOLDER, decoded_filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail=f"文件不存在: {decoded_filename}")
+    return FileResponse(filepath, filename=os.path.basename(decoded_filename))
 
 @app.post("/cleanup")
 async def cleanup():

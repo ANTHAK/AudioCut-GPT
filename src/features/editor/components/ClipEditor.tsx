@@ -55,7 +55,7 @@ export const ClipEditor: React.FC<ClipEditorProps> = ({ clipData, onClose, onSav
                 setCurrentData(updatedData);
                 setWords(response.words);
                 if (audioRef.current) {
-                    audioRef.current.src = `/download/${response.folder_name}/audio.mp3`;
+                    audioRef.current.src = `/outputs/${response.folder_name}/audio.mp3`;
                     audioRef.current.load();
                 }
             }
@@ -136,7 +136,7 @@ export const ClipEditor: React.FC<ClipEditorProps> = ({ clipData, onClose, onSav
                             <h4 className="text-sm font-medium text-gray-400 mb-4 uppercase tracking-wider">试听与剪辑范围</h4>
                             <audio
                                 ref={audioRef}
-                                src={`/download/${currentData.folder_name}/audio.mp3`}
+                                src={`/outputs/${currentData.folder_name}/audio.mp3`}
                                 controls
                                 className="w-full h-12 mb-6"
                             />

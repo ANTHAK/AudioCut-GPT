@@ -61,7 +61,10 @@ export function EditorPage() {
                             setProcessing(false);
                         } else if (status.status === 'error') {
                             clearInterval(pollProgress);
-                            updateFile(tempId, { status: 'error' });
+                            updateFile(tempId, {
+                                status: 'error',
+                                error: status.message || status.error || 'Unknown error occurred'
+                            });
                             setProcessing(false);
                         }
                     } catch (err) {
@@ -230,6 +233,19 @@ export function EditorPage() {
                                 </div>
                             </div>
                         </>
+                    )}
+                    {selectedFile.status === 'error' && (
+                        <div className="glass-panel p-6 border-red-500/50 bg-red-500/10">
+                            <h3 className="text-lg font-bold text-red-400 mb-2">处理失败</h3>
+                            <p className="text-gray-300">{selectedFile.error || '发生未知错误，请稍后重试。'}</p>
+                            <Button
+                                variant="outline"
+                                className="mt-4 border-red-500/30 hover:bg-red-500/20 text-red-300"
+                                onClick={() => setSelectedFile(null)}
+                            >
+                                重新上传
+                            </Button>
+                        </div>
                     )}
                 </div>
             )}

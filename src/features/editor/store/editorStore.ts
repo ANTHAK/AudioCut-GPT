@@ -15,6 +15,7 @@ interface UploadedFile {
   segments?: AudioSegment[];
   words?: any[]; // Word level timestamps
   full_text?: string;
+  error?: string;
 }
 
 interface EditorState {

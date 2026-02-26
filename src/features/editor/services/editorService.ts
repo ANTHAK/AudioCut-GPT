@@ -55,7 +55,7 @@ export const editorService = {
     return response.json();
   },
 
-  async getProgress(taskId: string): Promise<{ progress: number; status: string; message: string; result?: any }> {
+  async getProgress(taskId: string): Promise<{ progress: number; status: string; message: string; result?: any; error?: string }> {
     const response = await fetch(`${API_BASE}/progress/${taskId}`);
     if (!response.ok) {
       throw new Error('Failed to get progress');
