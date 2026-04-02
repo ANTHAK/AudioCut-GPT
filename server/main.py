@@ -80,6 +80,38 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     
     return {"success": True, "task_id": task_id, "message": "文件上传成功，开始处理..."}
 
+@app.post("/upload_raw")
+async def upload_raw(file: UploadFile = File(...)):
+    """上传音频文件用于拼接，不触发语音识别，立即返回文件名和时长。"""
+    if not is_allowed_file(file.filename):
+        raise HTTPException(status_code=400, detail="不支持的文件格式")
+    
+    try:
+        import ffmpeg as _ffmpeg
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{timestamp}_{file.filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # 获取时长
+        try:
+            probe = _ffmpeg.probe(filepath)
+            duration = float(probe['format']['duration'])
+        except Exception:
+            duration = 0.0
+        
+        return {
+            "success": True,
+            "filename": filename,
+            "original_name": file.filename,
+            "duration": round(duration, 3),
+            "message": "上传成功"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
+
 @app.get("/progress/{task_id}", response_model=TaskResponse)
 async def get_progress(task_id: str):
     if task_id not in progress_data:
@@ -112,12 +144,23 @@ async def save_clip(request: SaveClipRequest):
 @app.post("/concatenate")
 async def concatenate_audio(request: ConcatenateRequest):
     try:
-        filename, duration = concatenate_audio_logic(request.filenames)
+        segments_dicts = None
+        if request.segments:
+            segments_dicts = [s.model_dump() for s in request.segments]
+
+        result = concatenate_audio_logic(
+            filenames=request.filenames,
+            segments=segments_dicts,
+            output_label=request.output_label
+        )
         return {
             "success": True,
-            "filename": filename,
-            "duration": duration,
-            "message": f"成功拼接 {len(request.filenames)} 个音频文件"
+            "filename": result['filename'],
+            "folder_name": result['folder_name'],
+            "zip_filename": result['zip_filename'],
+            "duration": result['duration'],
+            "segments": result.get('segments', []),
+            "message": f"成功拼接 {len(request.segments or request.filenames)} 个音频片段"
         }
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -144,8 +187,16 @@ async def list_uploads():
 
 # Static files for downloads
 app.mount("/outputs", StaticFiles(directory=OUTPUT_FOLDER), name="outputs")
-# Also keep /download for ZIP files if they are in the root of OUTPUT_FOLDER
-# but actually StaticFiles handles those too.
+# Uploads preview (for concat editor segment preview)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
+
+@app.get("/stream_output/{folder}/{filename}")
+async def stream_output(folder: str, filename: str):
+    """用于流式输出预览音频，比 StaticFiles 更可靠"""
+    filepath = os.path.join(OUTPUT_FOLDER, folder, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(filepath)
 
 @app.get("/download/{filename:path}")
 async def download_file(filename: str):

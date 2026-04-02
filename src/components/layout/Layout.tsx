@@ -13,7 +13,7 @@ export function Layout() {
             </main>
 
             <footer className="py-6 text-center text-gray-500 text-sm border-t border-gray-800">
-                <p>© 2026 Voice Editor - Power by React 19 & Claude</p>
+                <p>© 2026 Voice Editor</p>
             </footer>
         </div>
     );

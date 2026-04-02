@@ -18,12 +18,23 @@ interface UploadedFile {
   error?: string;
 }
 
+export interface HistoryItem {
+  id: string;
+  folder_name: string;
+  zip_filename: string;
+  json_filename?: string;
+  text: string;
+  duration: number;
+  timestamp: Date;
+}
+
 interface EditorState {
   files: UploadedFile[];
   selectedFileId: string | null;
   selectedSegments: string[]; // Segment IDs
   progress: number;
   isProcessing: boolean;
+  history: HistoryItem[];
   
   // Actions
   addFiles: (files: UploadedFile[]) => void;
@@ -34,6 +45,7 @@ interface EditorState {
   clearSelection: () => void;
   setProgress: (progress: number) => void;
   setProcessing: (isProcessing: boolean) => void;
+  addToHistory: (item: HistoryItem) => void;
   reset: () => void;
 }
 
@@ -43,6 +55,7 @@ const initialState = {
   selectedSegments: [],
   progress: 0,
   isProcessing: false,
+  history: [],
 };
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -76,6 +89,10 @@ export const useEditorStore = create<EditorState>((set) => ({
   setProgress: (progress) => set({ progress }),
 
   setProcessing: (isProcessing) => set({ isProcessing }),
+
+  addToHistory: (item) => set((state) => ({
+    history: [item, ...state.history]
+  })),
 
   reset: () => set(initialState),
 }));

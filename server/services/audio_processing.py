@@ -134,29 +134,115 @@ def save_clip_logic(folder_name, words, clip_info):
     
     return True
 
-def concatenate_audio_logic(filenames):
-    input_paths = []
-    for filename in filenames:
-        path = os.path.join(UPLOAD_FOLDER, filename)
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"文件不存在: {filename}")
-        input_paths.append(path)
-
+def concatenate_audio_logic(filenames=None, segments=None, output_label=None):
+    """
+    拼接音频文件。
+    - segments: list of dict {filename, start_time, end_time, label}
+      若提供 segments，则按每段的 start_time/end_time 剪切后拼接。
+    - filenames: 兼容旧接口，简单拼接整个文件。
+    """
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_filename = f"concatenated_{timestamp}.mp3"
-    output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+    prefix = output_label or "concat"
+    # 清理前缀中的非法字符
+    prefix = ''.join(c for c in prefix if c.isalnum() or c in '_-')[:30] or "concat"
+    output_filename = f"{prefix}_{timestamp}.mp3"
+    output_folder = os.path.join(OUTPUT_FOLDER, f"{prefix}_{timestamp}")
+    os.makedirs(output_folder, exist_ok=True)
+    output_path = os.path.join(output_folder, "audio.mp3")
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-        for p in input_paths:
-            f.write(f"file '{os.path.abspath(p)}'\n")
-        concat_list_path = f.name
+    temp_files = []
+    segment_info = []  # 记录每段实际时长
 
     try:
-        cmd = ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', concat_list_path, '-c', 'copy', output_path]
-        subprocess.run(cmd, check=True, capture_output=True)
+        if segments:
+            # 新版：每段先用 ffmpeg 剪切到临时文件
+            for i, seg in enumerate(segments):
+                src_path = os.path.join(UPLOAD_FOLDER, seg['filename'])
+                if not os.path.exists(src_path):
+                    raise FileNotFoundError(f"文件不存在: {seg['filename']}")
+
+                # 探测原始时长
+                probe = ffmpeg.probe(src_path)
+                src_duration = float(probe['format']['duration'])
+
+                start = max(0.0, seg.get('start_time', 0.0))
+                end = seg.get('end_time', -1.0)
+                if end < 0 or end > src_duration:
+                    end = src_duration
+                end = max(start + 0.05, end)
+                duration_seg = end - start
+                volume = seg.get('volume', 1.0)
+
+                tmp_fd, tmp_path = tempfile.mkstemp(suffix=f'_seg{i}.mp3')
+                os.close(tmp_fd)
+                temp_files.append(tmp_path)
+
+                # 使用 -af "volume=x" 调整音量
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-ss', str(start), '-t', str(duration_seg),
+                    '-i', src_path,
+                    '-af', f'volume={volume}',
+                    '-acodec', 'libmp3lame', '-q:a', '2',
+                    tmp_path
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+
+                segment_info.append({
+                    'index': i,
+                    'filename': seg['filename'],
+                    'label': seg.get('label') or seg['filename'],
+                    'start_time': start,
+                    'end_time': end,
+                    'duration': round(duration_seg, 3)
+                })
+
+            # 生成 concat 列表
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                for p in temp_files:
+                    f.write(f"file '{os.path.abspath(p)}'\n")
+                concat_list_path = f.name
+
+        else:
+            # 旧版：整个文件直接拼接
+            input_paths = []
+            for filename in (filenames or []):
+                path = os.path.join(UPLOAD_FOLDER, filename)
+                if not os.path.exists(path):
+                    raise FileNotFoundError(f"文件不存在: {filename}")
+                input_paths.append(path)
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                for p in input_paths:
+                    f.write(f"file '{os.path.abspath(p)}'\n")
+                concat_list_path = f.name
+
+        try:
+            cmd = ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', concat_list_path, '-acodec', 'libmp3lame', '-q:a', '2', output_path]
+            subprocess.run(cmd, check=True, capture_output=True)
+        finally:
+            if os.path.exists(concat_list_path):
+                os.remove(concat_list_path)
+
         probe = ffmpeg.probe(output_path)
-        duration = float(probe['format']['duration'])
-        return output_filename, duration
+        total_duration = float(probe['format']['duration'])
+
+        # 打包成 zip
+        zip_filename = f"{prefix}_{timestamp}.zip"
+        zip_path = os.path.join(OUTPUT_FOLDER, zip_filename)
+        folder_name = f"{prefix}_{timestamp}"
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(output_path, os.path.join(folder_name, 'audio.mp3'))
+
+        return {
+            'filename': output_filename,
+            'folder_name': folder_name,
+            'zip_filename': zip_filename,
+            'duration': round(total_duration, 3),
+            'segments': segment_info,
+        }
+
     finally:
-        if os.path.exists(concat_list_path):
-            os.remove(concat_list_path)
+        for p in temp_files:
+            if os.path.exists(p):
+                os.remove(p)

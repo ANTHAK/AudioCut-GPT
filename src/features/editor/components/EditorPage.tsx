@@ -4,9 +4,10 @@ import { WordList } from './WordList';
 import { SegmentList } from './SegmentList';
 import { useEditorStore } from '../store/editorStore';
 import { ClipEditor } from './ClipEditor';
+import { AudioConcatEditor } from './AudioConcatEditor';
 import { editorService, ClipResponse } from '../services/editorService';
 import { Button } from '@/shared/components/ui/Button';
-import { Loader2, Scissors, History, Download, FileAudio, ExternalLink } from 'lucide-react';
+import { Loader2, Scissors, History, Download, FileAudio, ExternalLink, Layers } from 'lucide-react';
 
 export function EditorPage() {
     const {
@@ -19,12 +20,16 @@ export function EditorPage() {
         progress,
         setProgress,
         isProcessing,
-        setProcessing
+        setProcessing,
+        history,
+        addToHistory,
+        clearSelection
     } = useEditorStore();
 
     const [clipResult, setClipResult] = useState<{ url: string; filename: string } | null>(null);
     const [showEditor, setShowEditor] = useState(false);
     const [editorData, setEditorData] = useState<(ClipResponse & { meta?: any }) | null>(null);
+    const [showConcatEditor, setShowConcatEditor] = useState(false);
 
     const handleUpload = async (uploadedFiles: File[]) => {
         setProcessing(true);
@@ -136,10 +141,33 @@ export function EditorPage() {
             url: `/download/${finalData.zip_filename}`,
             filename: finalData.zip_filename
         });
+
+        // Add to history
+        addToHistory({
+            id: Math.random().toString(36).substring(7),
+            folder_name: finalData.folder_name,
+            zip_filename: finalData.zip_filename,
+            json_filename: finalData.json_filename,
+            text: finalData.clip_info?.text || '未知文字',
+            duration: finalData.duration,
+            timestamp: new Date()
+        });
+
         setShowEditor(false);
+        clearSelection();
     };
 
     const selectedFile = files.find(f => f.id === selectedFileId);
+
+    // 构建可用文件列表（仅 done 状态），duration 从 segments 最后一个计算
+    const availableFilesForConcat = files
+        .filter(f => f.status === 'done')
+        .map(f => {
+            const lastSeg = f.segments?.[f.segments.length - 1];
+            const lastWord = f.words?.[f.words.length - 1];
+            const duration = lastWord?.end ?? lastSeg?.end ?? 0;
+            return { filename: f.name, label: f.name, duration };
+        });
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -150,6 +178,49 @@ export function EditorPage() {
                     onSave={handleSaveEditor}
                 />
             )}
+            {showConcatEditor && (
+                <AudioConcatEditor
+                    availableFiles={availableFilesForConcat}
+                    onClose={() => setShowConcatEditor(false)}
+                    onSaved={(result) => {
+                        addToHistory({
+                            id: Math.random().toString(36).substring(7),
+                            folder_name: result.folder_name,
+                            zip_filename: result.zip_filename,
+                            json_filename: undefined,
+                            text: `[拼接] ${result.folder_name}`,
+                            duration: result.duration,
+                            timestamp: new Date()
+                        });
+                    }}
+                />
+            )}
+
+            {/* 音频拼接快捷入口 — 始终可见 */}
+            <div
+                className="glass-panel p-5 flex items-center justify-between border-indigo-500/20 hover:border-indigo-500/40 transition-all cursor-pointer group"
+                onClick={() => setShowConcatEditor(true)}
+            >
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-indigo-500/10 rounded-xl group-hover:bg-indigo-500/20 transition-colors">
+                        <Layers className="w-6 h-6 text-indigo-400" />
+                    </div>
+                    <div>
+                        <h3 className="font-semibold text-white">音频拼接</h3>
+                        <p className="text-sm text-gray-400 mt-0.5">上传多段音频，自由排序 · 精确裁剪 · 一键合并导出</p>
+                    </div>
+                </div>
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-2 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10 flex-shrink-0"
+                    onClick={e => { e.stopPropagation(); setShowConcatEditor(true); }}
+                >
+                    <Layers className="w-4 h-4" />
+                    打开编辑器
+                </Button>
+            </div>
+
             {!selectedFile || selectedFile.status === 'idle' ? (
                 <UploadBox onUpload={handleUpload} />
             ) : (
@@ -207,7 +278,17 @@ export function EditorPage() {
                                     </div>
                                 </div>
 
-                                <div className="flex gap-4">
+                                <div className="flex flex-wrap gap-3">
+                                    <Button
+                                        variant="secondary"
+                                        size="lg"
+                                        className="gap-2 border border-indigo-500/50 text-indigo-300 hover:bg-indigo-500/10"
+                                        onClick={() => setShowConcatEditor(true)}
+                                    >
+                                        <Layers className="w-5 h-5" />
+                                        音频拼接
+                                    </Button>
+
                                     <Button
                                         variant="default"
                                         size="lg"
@@ -250,12 +331,57 @@ export function EditorPage() {
                 </div>
             )}
 
-            <div className="mt-12 opacity-50">
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                    <History className="w-5 h-5" />
+            <div className="mt-12">
+                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                    <History className="w-5 h-5 text-blue-400" />
                     剪辑历史
                 </h3>
-                <p className="text-gray-500 italic">历史记录功能将在下一版本上线...</p>
+                {history.length > 0 ? (
+                    <div className="space-y-4">
+                        {history.map((item) => (
+                            <div key={item.id} className="glass-panel p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-white/5 hover:border-blue-500/30 transition-all group">
+                                <div className="flex-grow">
+                                    <h4 className="font-medium text-blue-400 mb-1 flex items-center gap-2">
+                                        <FileAudio className="w-4 h-4" />
+                                        {item.text}
+                                    </h4>
+                                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                                        <span>⏱️ {item.duration.toFixed(2)}s</span>
+                                        <span>📅 {item.timestamp.toLocaleString()}</span>
+                                        <span className="opacity-0 group-hover:opacity-100 transition-opacity">📁 {item.folder_name}</span>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        className="gap-1 border border-green-500/30 text-green-400 hover:bg-green-500/10"
+                                        onClick={() => window.open(`/download/${item.zip_filename}`)}
+                                    >
+                                        <Download className="w-3.5 h-3.5" />
+                                        ZIP
+                                    </Button>
+                                    {item.json_filename && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-1 border-blue-500/30 text-blue-300 hover:bg-blue-500/10"
+                                            onClick={() => window.open(`/download/${item.folder_name}/${item.json_filename}`)}
+                                        >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            JSON
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="glass-panel p-12 text-center border-dashed border-white/10">
+                        <History className="w-12 h-12 text-gray-700 mx-auto mb-4 opacity-20" />
+                        <p className="text-gray-500">暂无剪辑处理记录</p>
+                    </div>
+                )}
             </div>
         </div>
     );
